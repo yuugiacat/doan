@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: learning-analytics-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    envVars:
+      - key: CORS_ORIGINS
+        value: '["https://your-frontend.vercel.app","http://localhost:5173"]'
