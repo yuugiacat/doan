@@ -63,20 +63,63 @@ function gazeDirection(landmarks: any[], pose: ReturnType<typeof headPose>) {
   return 'up'
 }
 
+type PhoneBox = { x: number; y: number; w: number; h: number; score: number }
+
+// Vẽ bounding box + nhãn điện thoại. Tọa độ x được lật ngang để khớp với
+// video đang mirror (scaleX(-1)); canvas KHÔNG mirror nên chữ vẫn đọc xuôi.
+function drawPhoneOverlay(
+  canvas: HTMLCanvasElement | null | undefined,
+  video: HTMLVideoElement,
+  boxes: { x: number; y: number; w: number; h: number; score: number }[]
+) {
+  if (!canvas) return
+  const vw = video.videoWidth, vh = video.videoHeight
+  if (!vw || !vh) return
+  if (canvas.width !== vw) canvas.width = vw
+  if (canvas.height !== vh) canvas.height = vh
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  ctx.clearRect(0, 0, vw, vh)
+
+  for (const b of boxes) {
+    const drawX = vw - (b.x + b.w)   // lật ngang cho khớp video mirror
+    ctx.lineWidth = Math.max(2, vw / 250)
+    ctx.strokeStyle = '#f97316'      // orange-500
+    ctx.strokeRect(drawX, b.y, b.w, b.h)
+
+    const label = `📱 Điện thoại ${Math.round(b.score * 100)}%`
+    ctx.font = `${Math.max(14, vw / 40)}px sans-serif`
+    const padX = 6, textW = ctx.measureText(label).width
+    const fontH = Math.max(14, vw / 40)
+    const labelY = b.y > fontH + 8 ? b.y - fontH - 6 : b.y + 2
+    ctx.fillStyle = '#f97316'
+    ctx.fillRect(drawX, labelY, textW + padX * 2, fontH + 6)
+    ctx.fillStyle = '#ffffff'
+    ctx.textBaseline = 'top'
+    ctx.fillText(label, drawX + padX, labelY + 3)
+  }
+}
+
 export function useMediaPipe(
   videoRef: React.RefObject<HTMLVideoElement>,
   onFrame: (frame: FeatureFrame) => void,
-  enabled: boolean
+  enabled: boolean,
+  overlayCanvasRef?: React.RefObject<HTMLCanvasElement>
 ) {
   const faceLandmarkerRef = useRef<FaceLandmarker | null>(null)
   const objectDetectorRef = useRef<ObjectDetector | null>(null)
   const rafRef     = useRef<number>(0)
   const frameCount = useRef<number>(0)
-  // Cache kết quả phone detection giữa các frame (chỉ re-detect mỗi 10 frame)
+  // Cache kết quả phone detection giữa các frame (chỉ re-detect mỗi vài frame)
   const phoneCache = useRef<boolean>(false)
+  // Bounding box điện thoại gần nhất để vẽ nhãn lên overlay
+  const phoneBoxes = useRef<PhoneBox[]>([])
+  const lastPhoneState = useRef<boolean>(false)
 
   const [ready, setReady]       = useState(false)
   const [initError, setInitError] = useState<string | null>(null)
+  const [phoneDetected, setPhoneDetected] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -93,17 +136,27 @@ export function useMediaPipe(
           numFaces: 2,
         })
 
-        // ObjectDetector — chỉ giữ "cell phone", ngưỡng 0.4
-        let od: ObjectDetector | null = null
-        try {
-          od = await ObjectDetector.createFromOptions(vision, {
-            baseOptions: { modelAssetPath: OD_MODEL_URL, delegate: 'GPU' },
+        // ObjectDetector — chỉ giữ "cell phone", ngưỡng 0.3
+        // Thử GPU trước, nếu lỗi (driver/WebGL) thì fallback CPU để vẫn nhận diện được.
+        const makeOD = (delegate: 'GPU' | 'CPU') =>
+          ObjectDetector.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: OD_MODEL_URL, delegate },
             runningMode: 'VIDEO',
-            scoreThreshold: 0.4,
+            scoreThreshold: 0.3,          // hạ ngưỡng để bắt điện thoại nhạy hơn
+            maxResults: 5,
             categoryAllowlist: ['cell phone'],
           })
-        } catch (e) {
-          console.warn('ObjectDetector load failed — phone detection disabled:', e)
+
+        let od: ObjectDetector | null = null
+        try {
+          od = await makeOD('GPU')
+        } catch (eGpu) {
+          console.warn('ObjectDetector GPU failed, thử CPU:', eGpu)
+          try {
+            od = await makeOD('CPU')
+          } catch (eCpu) {
+            console.warn('ObjectDetector load failed — phone detection disabled:', eCpu)
+          }
         }
 
         if (!cancelled) {
@@ -150,18 +203,39 @@ export function useMediaPipe(
       bbox = { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y }
     }
 
-    // ── Phone detection (mỗi 10 frame ~3fps để tiết kiệm CPU) ────
+    // ── Phone detection (mỗi 5 frame ~6fps — nhạy hơn trước) ─────
     const od = objectDetectorRef.current
-    if (od && frameCount.current % 10 === 0) {
+    if (od && frameCount.current % 5 === 0) {
       try {
         const odResult = od.detectForVideo(video, ts)
-        phoneCache.current = odResult?.detections?.some((d: any) =>
+        const phones = (odResult?.detections ?? []).filter((d: any) =>
           d.categories?.some((c: any) => c.categoryName === 'cell phone')
-        ) ?? false
+        )
+        phoneCache.current = phones.length > 0
+        phoneBoxes.current = phones.map((d: any) => {
+          const b = d.boundingBox ?? {}
+          const top = d.categories?.find((c: any) => c.categoryName === 'cell phone')
+          return {
+            x: b.originX ?? 0,
+            y: b.originY ?? 0,
+            w: b.width ?? 0,
+            h: b.height ?? 0,
+            score: top?.score ?? 0,
+          }
+        })
       } catch {
         // ignore per-frame errors
       }
     }
+
+    // Cập nhật state badge chỉ khi đổi trạng thái (tránh re-render 30fps)
+    if (phoneCache.current !== lastPhoneState.current) {
+      lastPhoneState.current = phoneCache.current
+      setPhoneDetected(phoneCache.current)
+    }
+
+    // ── Vẽ khung + nhãn "📱 Điện thoại" lên overlay ──────────────
+    drawPhoneOverlay(overlayCanvasRef?.current, video, phoneBoxes.current)
 
     const frame: FeatureFrame = {
       type: 'frame',
@@ -190,7 +264,7 @@ export function useMediaPipe(
 
     onFrame(frame)
     rafRef.current = requestAnimationFrame(loop)
-  }, [videoRef, onFrame])
+  }, [videoRef, onFrame, overlayCanvasRef])
 
   useEffect(() => {
     if (enabled && ready) {
@@ -201,5 +275,5 @@ export function useMediaPipe(
     return () => cancelAnimationFrame(rafRef.current)
   }, [enabled, ready, loop])
 
-  return { ready, initError }
+  return { ready, initError, phoneDetected }
 }

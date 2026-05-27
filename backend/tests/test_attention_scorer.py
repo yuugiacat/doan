@@ -41,14 +41,30 @@ def test_distraction_drops_score():
     assert result.state == AttentionState.DISTRACTED
 
 
-def test_sleepy_drops_score_slower():
-    # 60 giây buồn ngủ: -0.5 pt/s × 60 = -30 điểm → còn 70
+def test_sleepy_drops_score_hard():
+    # Ngủ gật / nhắm mắt trừ MẠNH: -3.0 pt/s × ~34s → về 0
+    # Chỉ 20s ngủ đã mất 60 điểm để data phản ánh rõ việc ngủ.
     scorer = AttentionScorer("s4")
     ts = time.time()
-    for i in range(60):
+    for i in range(20):
         result = scorer.update(ts + i, ["drowsy"])
-    assert result.score < 80
+    assert result.score <= 40
     assert result.state == AttentionState.SLEEPY
+
+
+def test_distraction_state_immediate():
+    # Tác nhân mất tập trung (nhìn chỗ khác) → DISTRACTED ngay, dù điểm còn cao
+    scorer = AttentionScorer("s4d")
+    result = scorer.update(time.time(), ["looking_away"])
+    assert result.score > 60
+    assert result.state == AttentionState.DISTRACTED
+
+
+def test_phone_is_own_state():
+    # Dùng điện thoại → trạng thái riêng ON_PHONE, tách khỏi mất tập trung chung
+    scorer = AttentionScorer("s4p")
+    result = scorer.update(time.time(), ["phone_distraction"])
+    assert result.state == AttentionState.ON_PHONE
 
 
 def test_recovery_after_distraction():

@@ -74,13 +74,17 @@ export default function SessionReport() {
             {a.distracted_pct > 0 && (
               <div className="bg-orange-500" style={{ width: `${a.distracted_pct}%` }} title={`Mất tập trung ${a.distracted_pct}%`} />
             )}
+            {a.on_phone_pct > 0 && (
+              <div className="bg-red-500" style={{ width: `${a.on_phone_pct}%` }} title={`Dùng điện thoại ${a.on_phone_pct}%`} />
+            )}
             {a.sleepy_pct > 0 && (
               <div className="bg-purple-500" style={{ width: `${a.sleepy_pct}%` }} title={`Mệt mỏi ${a.sleepy_pct}%`} />
             )}
           </div>
-          <div className="flex gap-4 mt-2 text-xs text-gray-400">
+          <div className="flex flex-wrap gap-4 mt-2 text-xs text-gray-400">
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> 📖 Đang học {a.focused_pct}%</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" /> 😵 Mất tập trung {a.distracted_pct}%</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> 📱 Dùng điện thoại {a.on_phone_pct}%</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500 inline-block" /> 😴 Mệt mỏi {a.sleepy_pct}%</span>
           </div>
         </div>

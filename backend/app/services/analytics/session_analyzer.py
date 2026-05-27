@@ -26,6 +26,7 @@ class SessionAnalyzer:
         total = len(states)
         focused_pct = round(states.count(AttentionState.FOCUSED.value) / total * 100, 1)
         distracted_pct = round(states.count(AttentionState.DISTRACTED.value) / total * 100, 1)
+        on_phone_pct = round(states.count(AttentionState.ON_PHONE.value) / total * 100, 1)
         sleepy_pct = round(states.count(AttentionState.SLEEPY.value) / total * 100, 1)
 
         peak_score = max(score_values)
@@ -43,7 +44,11 @@ class SessionAnalyzer:
         main_distraction_cause = max(cause_counts, key=cause_counts.get) if cause_counts else None
 
         # Số lần chuyển sang trạng thái tiêu cực
-        bad_states = {AttentionState.DISTRACTED.value, AttentionState.SLEEPY.value}
+        bad_states = {
+            AttentionState.DISTRACTED.value,
+            AttentionState.ON_PHONE.value,
+            AttentionState.SLEEPY.value,
+        }
         distraction_episodes = 0
         prev = None
         for state in states:
@@ -63,6 +68,7 @@ class SessionAnalyzer:
             "peak_score": peak_score,
             "focused_pct": focused_pct,
             "distracted_pct": distracted_pct,
+            "on_phone_pct": on_phone_pct,
             "sleepy_pct": sleepy_pct,
             "distraction_episodes": distraction_episodes,
             "main_distraction_cause": main_distraction_cause,

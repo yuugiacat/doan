@@ -52,7 +52,11 @@ _GENERIC_IMPROVE = (
 def generate_advice(analysis: dict[str, Any]) -> list[str]:
     advice_list: list[str] = []
 
-    distracted_pct: float = analysis.get("distracted_pct", 0.0) + analysis.get("drowsy_pct", 0.0)
+    distracted_pct: float = (
+        analysis.get("distracted_pct", 0.0)
+        + analysis.get("on_phone_pct", 0.0)
+        + analysis.get("sleepy_pct", 0.0)
+    )
     cause_counts: dict[str, int] = analysis.get("distraction_cause_counts", {})
     total_events = sum(cause_counts.values()) or 1
 

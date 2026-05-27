@@ -15,6 +15,10 @@ _MESSAGES = {
         AlertType.ALERT,
         "Bạn đang mất tập trung. Hãy quay lại bài học nhé!",
     ),
+    AttentionState.ON_PHONE: (
+        AlertType.STRONG_ALERT,
+        "Bạn đang dùng điện thoại. Hãy cất điện thoại và quay lại bài học!",
+    ),
     AttentionState.SLEEPY: (
         AlertType.STRONG_ALERT,
         "Bạn có vẻ đang buồn ngủ hoặc mệt mỏi. Hãy nghỉ ngắn 5 phút rồi tiếp tục!",
@@ -23,6 +27,7 @@ _MESSAGES = {
 
 _THRESHOLDS = {
     AttentionState.DISTRACTED: 30,   # cảnh báo sau 30s mất tập trung
+    AttentionState.ON_PHONE: 10,     # cảnh báo sớm sau 10s dùng điện thoại
     AttentionState.SLEEPY: 15,       # cảnh báo sau 15s biểu hiện mệt
 }
 

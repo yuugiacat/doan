@@ -1,6 +1,7 @@
 export type AttentionState =
   | 'focused'
   | 'distracted'
+  | 'on_phone'
   | 'sleepy'
 
 export type AlertType = 'nudge' | 'alert' | 'strong_alert'
@@ -102,6 +103,7 @@ export interface SessionReport extends SessionInfo {
     peak_score: number
     focused_pct: number
     distracted_pct: number
+    on_phone_pct: number
     sleepy_pct: number
     distraction_episodes: number
     main_distraction_cause: string | null

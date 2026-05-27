@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useWebcam } from '../../hooks/useWebcam'
 import { useMediaPipe } from '../../hooks/useMediaPipe'
 import { FeatureFrame } from '../../types'
@@ -10,7 +10,9 @@ interface Props {
 
 export default function WebcamView({ onFrame, enabled }: Props) {
   const { videoRef, ready, error, start, stop } = useWebcam()
-  const { ready: mpReady, initError } = useMediaPipe(videoRef, onFrame, enabled && ready)
+  const overlayRef = useRef<HTMLCanvasElement>(null)
+  const { ready: mpReady, initError, phoneDetected } =
+    useMediaPipe(videoRef, onFrame, enabled && ready, overlayRef)
 
   useEffect(() => {
     if (enabled) start()
@@ -25,6 +27,19 @@ export default function WebcamView({ onFrame, enabled }: Props) {
         muted
         playsInline
       />
+
+      {/* Canvas overlay — vẽ khung + nhãn điện thoại (không mirror để chữ đọc xuôi) */}
+      <canvas
+        ref={overlayRef}
+        className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+      />
+
+      {/* Cảnh báo phát hiện điện thoại */}
+      {phoneDetected && (
+        <div className="absolute top-2 right-2 bg-orange-600/90 text-white text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 animate-pulse">
+          📱 Phát hiện điện thoại
+        </div>
+      )}
 
       {/* Status overlay */}
       {!ready && (

@@ -91,6 +91,7 @@ class CompositeEventType(str, Enum):
 class AttentionState(str, Enum):
     FOCUSED = "focused"       # đang học (đọc, ghi, suy nghĩ)
     DISTRACTED = "distracted" # mất tập trung (nhìn chỗ khác, rời bàn, quay đầu)
+    ON_PHONE = "on_phone"     # đang dùng điện thoại (tách riêng khỏi mất tập trung chung)
     SLEEPY = "sleepy"         # mệt mỏi (nhắm mắt, gật gù, đầu cúi liên tục)
 
 

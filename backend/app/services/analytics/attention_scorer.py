@@ -12,6 +12,7 @@ from app.config import settings
 from app.services.analytics.vocabulary import (
     AttentionScore,
     AttentionState,
+    CompositeEventType,
     COMPOSITE_ENGAGEMENT,
     COMPOSITE_DISTRACTION,
     COMPOSITE_SLEEPY,
@@ -60,8 +61,16 @@ class AttentionScorer:
     @staticmethod
     def _classify(score: float, active_composites: list[str]) -> AttentionState:
         sleepy_names = {e.value for e in COMPOSITE_SLEEPY}
+        distraction_names = {e.value for e in COMPOSITE_DISTRACTION}
         if any(c in sleepy_names for c in active_composites):
             return AttentionState.SLEEPY
+        # Dùng điện thoại → trạng thái riêng ON_PHONE (ưu tiên hơn mất tập trung chung).
+        if CompositeEventType.PHONE_DISTRACTION.value in active_composites:
+            return AttentionState.ON_PHONE
+        # Tác nhân mất tập trung khác (nhìn chỗ khác, quay đầu, rời bàn, nói chuyện)
+        # → tính DISTRACTED ngay, không chờ điểm tụt xuống 60.
+        if any(c in distraction_names for c in active_composites):
+            return AttentionState.DISTRACTED
         if score >= 60:
             return AttentionState.FOCUSED
         return AttentionState.DISTRACTED

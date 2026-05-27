@@ -3,30 +3,35 @@ import { AttentionScore, AttentionState } from '../../types'
 const STATE_LABELS: Record<AttentionState, string> = {
   focused: 'Đang học',
   distracted: 'Mất tập trung',
+  on_phone: 'Dùng điện thoại',
   sleepy: 'Mệt mỏi / Buồn ngủ',
 }
 
 const STATE_ICONS: Record<AttentionState, string> = {
   focused: '📖',
   distracted: '😵',
+  on_phone: '📱',
   sleepy: '😴',
 }
 
 const STATE_COLORS: Record<AttentionState, string> = {
   focused: 'text-green-400',
   distracted: 'text-orange-400',
+  on_phone: 'text-red-400',
   sleepy: 'text-purple-400',
 }
 
 const STATE_BG: Record<AttentionState, string> = {
   focused: 'bg-green-500',
   distracted: 'bg-orange-500',
+  on_phone: 'bg-red-500',
   sleepy: 'bg-purple-500',
 }
 
 const GAUGE_COLOR: Record<AttentionState, string> = {
   focused: '#22c55e',
   distracted: '#f97316',
+  on_phone: '#ef4444',
   sleepy: '#a855f7',
 }
 

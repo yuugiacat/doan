@@ -49,7 +49,7 @@ class Settings(BaseSettings):
 
     # Attention scoring — health-bar model (điểm bắt đầu 100, trừ khi sao nhãng, cộng khi không)
     SCORE_DISTRACTION_RATE_PER_S: float = 1.0   # điểm trừ/giây khi sao nhãng
-    SCORE_SLEEPY_RATE_PER_S: float = 0.5         # điểm trừ/giây khi buồn ngủ
+    SCORE_SLEEPY_RATE_PER_S: float = 3.0         # điểm trừ/giây khi ngủ gật / nhắm mắt — trừ mạnh để data phản ánh rõ việc ngủ
     SCORE_ENGAGED_RATE_PER_S: float = 0.5        # điểm cộng/giây khi tập trung chủ động
     SCORE_NEUTRAL_RATE_PER_S: float = 0.2        # điểm cộng/giây khi ngồi yên (không sao nhãng)
 
