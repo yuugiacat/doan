@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem \"d:\\\\demoapp\" -Recurse | Where-Object { !$_.PSIsContainer } | Select-Object -ExpandProperty FullName | Sort-Object)",
+      "PowerShell(python --version)",
+      "PowerShell(pip install fastapi uvicorn pydantic pydantic-settings pytest 2>&1)",
+      "PowerShell(pip install fastapi uvicorn websockets pydantic pydantic-settings numpy 2>&1)"
+    ]
+  }
+}
