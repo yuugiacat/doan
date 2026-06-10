@@ -93,6 +93,11 @@ class AtomicEncoder:
     def __init__(self, session_id: str, baseline: Optional[Baseline] = None):
         self.session_id = session_id
         self.baseline = baseline or {}
+        # ts của frame mới nhất — dùng cho duration counters.
+        # Phải lấy từ frame chứ KHÔNG dùng time.time(), nếu không khi tab ẩn
+        # và camera tạm dừng, các counter sẽ phồng theo wall clock và gây
+        # false trigger (LOOKING_AWAY, PHONE_DISTRACTION...) lúc quay lại tab.
+        self._last_frame_ts: float = 0.0
         self._state: dict[str, Any] = {
             "face_present": False,
             "face_absent_start": None,
@@ -125,6 +130,7 @@ class AtomicEncoder:
         """Process one feature frame. Returns newly emitted events."""
         self._emitted_events = []
         ts = frame.get("timestamp", time.time())
+        self._last_frame_ts = ts
 
         self._process_presence(frame, ts)
         self._process_gaze(frame, ts)
@@ -487,7 +493,15 @@ class AtomicEncoder:
         self._state["phone_detected"] = now
 
     def get_current_state(self) -> dict[str, Any]:
-        """Returns a snapshot of current atomic states for composite inference."""
+        """Returns a snapshot of current atomic states for composite inference.
+
+        Durations dùng ts của frame mới nhất (self._last_frame_ts), KHÔNG dùng
+        time.time(). Lý do: khi tab bị ẩn và frame ngừng đến (browser pause rAF),
+        time.time() vẫn tăng → các counter phồng giả → false trigger lúc tab
+        quay lại. Dùng frame ts thì counter chỉ "đứng yên" cho đến khi có frame
+        thật, đúng với hành vi mong muốn.
+        """
+        now = self._last_frame_ts
         return {
             "face_present": self._state["face_present"],
             "multiple_faces": self._state["multiple_faces"],
@@ -495,21 +509,21 @@ class AtomicEncoder:
             "gaze_direction": self._state.get("gaze_direction", "center"),
             "eye_state": self._state["eye_state"],
             "eye_state_duration_ms": (
-                int((time.time() - self._state["eye_state_start"]) * 1000)
+                int((now - self._state["eye_state_start"]) * 1000)
                 if self._state["eye_state_start"] else 0
             ),
             "low_ear_duration_ms": (
-                int((time.time() - self._state["low_ear_start"]) * 1000)
+                int((now - self._state["low_ear_start"]) * 1000)
                 if self._state["low_ear_start"] else 0
             ),
             "head_state": self._state["head_state"],
             "head_state_duration_ms": (
-                int((time.time() - self._state["head_state_start"]) * 1000)
+                int((now - self._state["head_state_start"]) * 1000)
                 if self._state["head_state_start"] else 0
             ),
             "hand_near_face": self._state["hand_near_face"],
             "hand_near_face_duration_ms": (
-                int((time.time() - self._state["hand_near_face_start"]) * 1000)
+                int((now - self._state["hand_near_face_start"]) * 1000)
                 if self._state["hand_near_face_start"] else 0
             ),
             "hand_writing": self._state["hand_writing"],
@@ -519,12 +533,12 @@ class AtomicEncoder:
             "yawn_times": self._state["yawn_times"],
             "head_roll": self._state.get("head_roll", 0.0),
             "gaze_off_duration_ms": (
-                int((time.time() - self._state["gaze_off_start"]) * 1000)
+                int((now - self._state["gaze_off_start"]) * 1000)
                 if self._state["gaze_off_start"] else 0
             ),
             "phone_detected": self._state["phone_detected"],
             "phone_detected_duration_ms": (
-                int((time.time() - self._state["phone_detected_start"]) * 1000)
+                int((now - self._state["phone_detected_start"]) * 1000)
                 if self._state["phone_detected_start"] else 0
             ),
         }

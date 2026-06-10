@@ -193,13 +193,13 @@ export function useMediaPipe(
     return () => { cancelled = true }
   }, [])
 
-  const loop = useCallback(() => {
+  // Xử lý 1 frame — KHÔNG tự schedule. Việc lên lịch lại do useEffect dưới
+  // quản lý (rAF khi tab visible, setInterval khi tab hidden) để tránh tình
+  // trạng rAF tự gọi lại bị queue ngầm rồi xả 1 lúc khi tab quay lại visible.
+  const processOneFrame = useCallback(() => {
     const video = videoRef.current
     const fl    = faceLandmarkerRef.current
-    if (!video || !fl || video.readyState < 2) {
-      rafRef.current = requestAnimationFrame(loop)
-      return
-    }
+    if (!video || !fl || video.readyState < 2) return
 
     const ts = performance.now()
     frameCount.current += 1
@@ -296,17 +296,63 @@ export function useMediaPipe(
     }
 
     onFrame(frame)
-    rafRef.current = requestAnimationFrame(loop)
   }, [videoRef, onFrame, overlayCanvasRef])
 
+  // Tab visible → rAF (~30 fps). Tab ẩn → setInterval 200ms (~5 fps) vì
+  // browser pause rAF khi tab background. Camera vẫn chạy nền nên webcam vẫn
+  // detect được hành vi thực tế — user chuyển tab xem tài liệu/làm bài tập
+  // mà vẫn ngồi trước camera sẽ KHÔNG bị tính là sao nhãng.
+  const HIDDEN_INTERVAL_MS = 200
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   useEffect(() => {
-    if (enabled && ready) {
-      rafRef.current = requestAnimationFrame(loop)
-    } else {
+    if (!enabled || !ready) {
       cancelAnimationFrame(rafRef.current)
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+      return
     }
-    return () => cancelAnimationFrame(rafRef.current)
-  }, [enabled, ready, loop])
+
+    const rafTick = () => {
+      processOneFrame()
+      rafRef.current = requestAnimationFrame(rafTick)
+    }
+
+    const startVisibleMode = () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = requestAnimationFrame(rafTick)
+    }
+
+    const startHiddenMode = () => {
+      cancelAnimationFrame(rafRef.current)
+      if (intervalRef.current) return
+      intervalRef.current = setInterval(processOneFrame, HIDDEN_INTERVAL_MS)
+    }
+
+    const onVisibilityChange = () => {
+      if (document.hidden) startHiddenMode()
+      else startVisibleMode()
+    }
+
+    if (document.hidden) startHiddenMode()
+    else startVisibleMode()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      cancelAnimationFrame(rafRef.current)
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [enabled, ready, processOneFrame])
 
   return { ready, initError, phoneDetected }
 }

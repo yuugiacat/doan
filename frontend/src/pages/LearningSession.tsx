@@ -138,6 +138,7 @@ export default function LearningSession() {
               <li><b>Không lưu video hay hình ảnh</b></li>
               <li>Chỉ lưu các sự kiện hành vi đã trừu tượng hoá (head pose, mắt mở/nhắm, cúi đầu...)</li>
               <li>Phân tích MediaPipe chạy hoàn toàn trên trình duyệt của bạn</li>
+              <li>Phiên học vẫn tiếp tục theo dõi khi bạn chuyển tab (làm bài, xem tài liệu) — miễn bạn vẫn ngồi trước webcam thì sẽ không bị trừ điểm</li>
               <li>Bạn có thể dừng bất kỳ lúc nào</li>
             </ul>
           </div>
