@@ -108,11 +108,11 @@ export default function LearningSession() {
     })
     setCompleteToast({ score, minutes })
 
-    // Cho user 2.5s để nghe chime + đọc toast trước khi sang trang báo cáo.
+    // Cho user 3s để nghe trọn giai điệu chúc mừng + đọc toast trước khi sang báo cáo.
     window.setTimeout(() => {
       navigate(`/report/${sid}`)
       reset()
-    }, 2500)
+    }, 3000)
   }
 
   // Tự động kết thúc khi đủ 25 phút Pomodoro

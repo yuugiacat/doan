@@ -26,31 +26,44 @@ export async function requestPermission(): Promise<NotifyPermission> {
   return result as NotifyPermission
 }
 
-// Tiếng "ding-ding" 2 nốt (C6 → G6) bằng Web Audio API.
-// Tổng ~1.2s, fade out mượt để không chói tai.
+// Giai điệu chúc mừng — arpeggio C major thăng dần + chord climax cuối.
+// Tổng ~2s, kiểu "ding ding ding ding DIIING" như chuông hoàn thành nhiệm vụ.
+// Dùng sóng triangle thay sine cho âm sắc tươi tắn hơn (giống synth game cũ).
 export function playChime(): void {
   try {
     const Ctx = window.AudioContext || (window as any).webkitAudioContext
     if (!Ctx) return
     const ctx: AudioContext = new Ctx()
 
-    const playNote = (freq: number, startOffset: number, duration: number) => {
+    const playNote = (
+      freq: number,
+      startOffset: number,
+      duration: number,
+      volume = 0.25,
+    ) => {
       const osc = ctx.createOscillator()
       const gain = ctx.createGain()
-      osc.type = 'sine'
+      osc.type = 'triangle'
       osc.frequency.value = freq
       osc.connect(gain)
       gain.connect(ctx.destination)
       const t = ctx.currentTime + startOffset
       gain.gain.setValueAtTime(0.0001, t)
-      gain.gain.exponentialRampToValueAtTime(0.25, t + 0.02)
+      gain.gain.exponentialRampToValueAtTime(volume, t + 0.02)
       gain.gain.exponentialRampToValueAtTime(0.0001, t + duration)
       osc.start(t)
       osc.stop(t + duration)
     }
 
-    playNote(1046.5, 0, 0.5)   // C6
-    playNote(1568.0, 0.18, 0.7) // G6
+    // Phần 1: 4 nốt arpeggio C major thăng dần (ding ding ding ding)
+    playNote(523.25,  0.00, 0.22)  // C5
+    playNote(659.25,  0.14, 0.22)  // E5
+    playNote(783.99,  0.28, 0.22)  // G5
+    playNote(1046.50, 0.42, 0.28)  // C6
+    // Phần 2: 1 nhịp nghỉ ngắn rồi 3 nốt chord cao chồng nhau làm climax (DIIING)
+    playNote(1046.50, 0.78, 1.10, 0.20)  // C6 (giữ nền)
+    playNote(1318.51, 0.78, 1.10, 0.22)  // E6
+    playNote(1567.98, 0.78, 1.20, 0.20)  // G6 (đỉnh hợp âm)
   } catch {
     // im lặng — không để lỗi audio làm crash app
   }
