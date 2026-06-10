@@ -24,6 +24,7 @@ export default function LearningSession() {
 
   const { sendFrame, sendCalibration } = useWebSocket(sessionId)
   const calibTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const startingRef = useRef(false)  // lock chống double-click khi await API
   const [consent, setConsent] = useState(false)
   const [consentResearch, setConsentResearch] = useState(
     () => userIdentity.getConsentResearch()
@@ -34,39 +35,52 @@ export default function LearningSession() {
   const durationRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const startSession = async () => {
-    // Xoá dữ liệu phiên cũ (score history, alerts, composites) trước khi
-    // tạo phiên mới — phòng trường hợp phiên trước không reset đúng cách
-    // (api.endSession lỗi, user vào lại bằng back browser, refresh, v.v.).
-    reset()
-    setSessionDuration(0)
-    // Lưu lại để lần sau prefill
-    userIdentity.setEmail(email)
-    userIdentity.setName(displayName)
-    userIdentity.setConsentResearch(consentResearch)
+    // Chống double-click / start trùng — nếu đang khởi tạo hoặc phiên đang
+    // chạy thì bỏ qua. Quan trọng: 2 intervals leak = đếm 2× tốc độ.
+    if (startingRef.current || isActive) return
+    startingRef.current = true
 
-    const { session_id } = await api.createSession({
-      anonymous_id: userIdentity.getAnonymousId(),
-      email: email.trim() || null,
-      display_name: displayName.trim() || null,
-      consent_research: consentResearch,
-    })
-    setSessionId(session_id)
-    setActive(true)
-    setCalibrating(true)
-    setCalibrationProgress(0)
+    try {
+      // Clear intervals còn sót từ phiên trước (defensive)
+      if (calibTimerRef.current) clearInterval(calibTimerRef.current)
+      if (durationRef.current) clearInterval(durationRef.current)
+      calibTimerRef.current = null
+      durationRef.current = null
 
-    let elapsed = 0
-    calibTimerRef.current = setInterval(() => {
-      elapsed += 1
-      setCalibrationProgress(Math.round((elapsed / CALIBRATION_SECS) * 100))
-      if (elapsed >= CALIBRATION_SECS) {
-        clearInterval(calibTimerRef.current!)
-        setCalibrating(false)
-        sendCalibration({ calibrated: true, timestamp: Date.now() / 1000 })
-      }
-    }, 1000)
+      // Xoá dữ liệu phiên cũ (score history, alerts, composites).
+      reset()
+      setSessionDuration(0)
+      // Lưu lại để lần sau prefill
+      userIdentity.setEmail(email)
+      userIdentity.setName(displayName)
+      userIdentity.setConsentResearch(consentResearch)
 
-    durationRef.current = setInterval(() => setSessionDuration((d) => d + 1), 1000)
+      const { session_id } = await api.createSession({
+        anonymous_id: userIdentity.getAnonymousId(),
+        email: email.trim() || null,
+        display_name: displayName.trim() || null,
+        consent_research: consentResearch,
+      })
+      setSessionId(session_id)
+      setActive(true)
+      setCalibrating(true)
+      setCalibrationProgress(0)
+
+      let elapsed = 0
+      calibTimerRef.current = setInterval(() => {
+        elapsed += 1
+        setCalibrationProgress(Math.round((elapsed / CALIBRATION_SECS) * 100))
+        if (elapsed >= CALIBRATION_SECS) {
+          clearInterval(calibTimerRef.current!)
+          setCalibrating(false)
+          sendCalibration({ calibrated: true, timestamp: Date.now() / 1000 })
+        }
+      }, 1000)
+
+      durationRef.current = setInterval(() => setSessionDuration((d) => d + 1), 1000)
+    } finally {
+      startingRef.current = false
+    }
   }
 
   const stopSession = async () => {
