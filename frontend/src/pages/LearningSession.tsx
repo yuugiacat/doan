@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import { userIdentity } from '../services/userIdentity'
+import { notifySessionComplete, requestPermission } from '../services/notify'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useSessionStore } from '../store/sessionStore'
 import WebcamView from '../components/webcam/WebcamView'
@@ -33,6 +34,10 @@ export default function LearningSession() {
   const [displayName, setDisplayName] = useState(() => userIdentity.getName())
   const [sessionDuration, setSessionDuration] = useState(0)
   const durationRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Toast hiện trong-app khi phiên kết thúc (kèm browser notif + tiếng chime).
+  // Để 1 nhịp ~2.5s trước khi navigate sang report để user kịp nghe + đọc.
+  const [completeToast, setCompleteToast] = useState<{ score: number | null; minutes: number } | null>(null)
 
   const startSession = async () => {
     // Chống double-click / start trùng — nếu đang khởi tạo hoặc phiên đang
@@ -88,9 +93,26 @@ export default function LearningSession() {
     clearInterval(calibTimerRef.current!)
     clearInterval(durationRef.current!)
     setActive(false)
-    await api.endSession(sessionId)
-    navigate(`/report/${sessionId}`)
-    reset()
+    const sid = sessionId
+    const minutes = Math.max(1, Math.round(sessionDuration / 60))
+    const result = await api.endSession(sid)
+    const score = result?.analysis?.overall_score ?? null
+
+    // Thông báo 3-kênh: tiếng chime + browser notif (kể cả khi tab ẩn) + toast in-app.
+    notifySessionComplete({
+      title: '🍅 Phiên Pomodoro kết thúc',
+      body: score !== null
+        ? `Bạn đã học ${minutes} phút — điểm tập trung ${Math.round(score)}/100. Click để xem báo cáo.`
+        : `Bạn đã học ${minutes} phút. Click để xem báo cáo.`,
+      onClick: () => navigate(`/report/${sid}`),
+    })
+    setCompleteToast({ score, minutes })
+
+    // Cho user 2.5s để nghe chime + đọc toast trước khi sang trang báo cáo.
+    window.setTimeout(() => {
+      navigate(`/report/${sid}`)
+      reset()
+    }, 2500)
   }
 
   // Tự động kết thúc khi đủ 25 phút Pomodoro
@@ -183,7 +205,12 @@ export default function LearningSession() {
           </div>
 
           <button
-            onClick={() => setConsent(true)}
+            onClick={() => {
+              setConsent(true)
+              // Xin permission ngay sau click — cần user gesture để browser cho hỏi.
+              // User từ chối cũng OK: vẫn còn toast + chime, chỉ mất browser notif.
+              void requestPermission()
+            }}
             className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-semibold transition"
           >
             Tôi đồng ý — Bắt đầu
@@ -196,6 +223,22 @@ export default function LearningSession() {
   return (
     <div className="min-h-screen bg-gray-950 text-white p-6">
       <AlertBanner alert={latestAlert} />
+
+      {completeToast && (
+        <div className="fixed inset-x-0 top-6 z-50 flex justify-center px-4 pointer-events-none">
+          <div className="pointer-events-auto bg-gradient-to-r from-emerald-600 to-green-500 border border-emerald-400 rounded-2xl shadow-2xl p-5 max-w-md text-center animate-bounce-in">
+            <p className="text-2xl font-bold text-white">🎉 Phiên hoàn tất!</p>
+            <p className="text-sm text-emerald-100 mt-2">
+              ⏱ Đã học {completeToast.minutes} phút
+              {completeToast.score !== null && (
+                <> • 🎯 {Math.round(completeToast.score)}/100 điểm</>
+              )}
+            </p>
+            <p className="text-xs text-emerald-200 mt-1">Đang chuyển sang trang báo cáo…</p>
+          </div>
+        </div>
+      )}
+
 
       <div className="max-w-5xl mx-auto space-y-5">
         {/* Header */}
