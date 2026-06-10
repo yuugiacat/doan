@@ -13,12 +13,12 @@ def test_starts_at_100():
 
 
 def test_neutral_stays_at_100():
-    # Ngồi yên không sao nhãng → không giảm điểm, có thể tăng nhẹ
+    # Ngồi yên không sao nhãng → điểm giữ nguyên 100
     scorer = AttentionScorer("s1")
     ts = time.time()
     for i in range(10):
         result = scorer.update(ts + i, [])
-    assert result.score >= 100.0
+    assert result.score == 100.0
     assert result.state == AttentionState.FOCUSED
 
 
@@ -67,8 +67,8 @@ def test_phone_is_own_state():
     assert result.state == AttentionState.ON_PHONE
 
 
-def test_recovery_after_distraction():
-    # Sao nhãng 60s → tập trung lại, điểm phải tăng
+def test_no_recovery_after_distraction():
+    # Sao nhãng 60s → tập trung lại 30s → điểm KHÔNG được hồi
     scorer = AttentionScorer("s5")
     ts = time.time()
     for i in range(60):
@@ -76,7 +76,9 @@ def test_recovery_after_distraction():
     distracted_score = scorer.get_last_score()
     for i in range(30):
         result = scorer.update(ts + 60 + i, ["reading_screen"])
-    assert result.score > distracted_score
+    assert result.score == distracted_score
+    # Vẫn FOCUSED về trạng thái vì đang đọc — chỉ điểm số mới bị "khoá"
+    assert result.state == AttentionState.FOCUSED
 
 
 def test_no_decrease_when_not_distracted():

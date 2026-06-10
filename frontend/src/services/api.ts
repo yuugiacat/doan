@@ -12,8 +12,19 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   return res.json()
 }
 
+export interface CreateSessionPayload {
+  anonymous_id: string
+  email?: string | null
+  display_name?: string | null
+  consent_research: boolean
+}
+
 export const api = {
-  createSession: () => request<{ session_id: string; started_at: number }>('/sessions/', { method: 'POST' }),
+  createSession: (payload: CreateSessionPayload) =>
+    request<{ session_id: string; started_at: number }>('/sessions/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 
   listSessions: () => request<any[]>('/sessions/'),
 

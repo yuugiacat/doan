@@ -52,6 +52,50 @@ def test_drowsy_from_eyes_closed():
     assert CompositeEventType.DROWSY.value in active
 
 
+def test_drowsy_from_eyes_closed_fires_fast():
+    # Ngưỡng mới 1.2s — chỉ 1.5s nhắm mắt là đã DROWSY
+    inf = CompositeInferrer("s3b")
+    s = _state(eye_state="closed", eye_state_duration_ms=1500)
+    inf.infer(s, time.time())
+    assert CompositeEventType.DROWSY.value in inf.get_active_composites()
+
+
+def test_drowsy_from_lim_dim_eyes():
+    # Mắt lim dim (chưa nhắm hẳn, EAR thấp) ≥4s → DROWSY
+    inf = CompositeInferrer("s3c")
+    s = _state(eye_state="blinking", low_ear_duration_ms=4500)
+    inf.infer(s, time.time())
+    assert CompositeEventType.DROWSY.value in inf.get_active_composites()
+
+
+def test_drowsy_from_head_down_dozy():
+    # Đầu cúi 7s + mắt sụp mí 2s + không viết → ngủ gục
+    inf = CompositeInferrer("s3d")
+    s = _state(
+        head_state="down",
+        head_state_duration_ms=7000,
+        low_ear_duration_ms=2000,
+        hand_writing=False,
+    )
+    inf.infer(s, time.time())
+    assert CompositeEventType.DROWSY.value in inf.get_active_composites()
+
+
+def test_not_drowsy_when_writing():
+    # Đầu cúi + mắt sụp mí NHƯNG đang viết → KHÔNG phải ngủ gục
+    inf = CompositeInferrer("s3e")
+    s = _state(
+        head_state="down",
+        head_state_duration_ms=7000,
+        low_ear_duration_ms=2000,
+        hand_writing=True,
+        eye_state="open",       # tránh các rule drowsy khác
+        eye_state_duration_ms=0,
+    )
+    inf.infer(s, time.time())
+    assert CompositeEventType.DROWSY.value not in inf.get_active_composites()
+
+
 def test_phone_distraction():
     # Ngưỡng mới: 30s (30_000ms) đầu cúi liên tục → điện thoại
     inf = CompositeInferrer("s4")
@@ -101,7 +145,7 @@ def test_looking_away():
     inf = CompositeInferrer("s6")
     s = _state(
         head_state="turned_left",
-        head_state_duration_ms=4000,
+        head_state_duration_ms=5500,   # > ngưỡng mới 5s
     )
     inf.infer(s, time.time())
     active = inf.get_active_composites()
@@ -129,9 +173,9 @@ def test_reading_screen():
 
 
 def test_head_tilt_phone():
-    # Đầu nghiêng ≥20° → LOOKING_AWAY (điện thoại quay ngang)
+    # Đầu nghiêng ≥35° → LOOKING_AWAY (điện thoại quay ngang)
     inf = CompositeInferrer("s9")
-    s = _state(face_present=True, head_roll=25.0)
+    s = _state(face_present=True, head_roll=40.0)
     inf.infer(s, time.time())
     active = inf.get_active_composites()
     assert CompositeEventType.LOOKING_AWAY.value in active
@@ -141,7 +185,7 @@ def test_sustained_distraction_becomes_phone():
     # Sao nhãng liên tục ≥60s → PHONE_DISTRACTION
     inf = CompositeInferrer("s10")
     t0 = time.time()
-    s = _state(head_state="turned_left", head_state_duration_ms=4000)
+    s = _state(head_state="turned_left", head_state_duration_ms=5500)
     # Gọi frame đầu tiên để bắt đầu tracking
     inf.infer(s, t0)
     # Gọi frame sau 61 giây

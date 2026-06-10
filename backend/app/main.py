@@ -3,9 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.api.v1 import sessions, analytics
+from app.api import admin
 from app.streaming.ws_manager import manager
 from app.streaming.ws_handlers import get_or_create_pipeline, remove_pipeline
 from app.storage.event_buffer import store
+from app.storage import db
 
 app = FastAPI(title="Learning Analytics AI", version="1.0.0")
 
@@ -17,8 +19,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.on_event("startup")
+async def _on_startup():
+    await db.init_pool()
+
+
+@app.on_event("shutdown")
+async def _on_shutdown():
+    await db.close_pool()
+
+
 app.include_router(sessions.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
+app.include_router(admin.router, prefix="/api/admin")
 
 
 @app.get("/health")

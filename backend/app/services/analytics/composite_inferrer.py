@@ -6,16 +6,14 @@ Atomic encoder provides `get_current_state()`; this layer adds meaning.
 """
 from __future__ import annotations
 
-import time
 from typing import Any, Optional
 
-from app.config import settings  # noqa: F401 — dùng trong _eval_reading_materials
+from app.config import settings
 from app.services.analytics.vocabulary import (
     BehaviorEvent,
     CompositeEventType,
     EventCategory,
     EventGroup,
-    COMPOSITE_SLEEPY,
 )
 
 
@@ -44,8 +42,7 @@ class CompositeInferrer:
     """
 
     # Ngưỡng phát hiện hành vi lặp lại
-    # Cao hơn để không nhầm với hành vi học bình thường (nhìn vở, ngẩng đầu)
-    _NODDING_COUNT = 6        # ≥6 lần cúi đầu trong 60s → gật gù buồn ngủ
+    _NODDING_COUNT = 4        # ≥4 lần cúi đầu trong 60s → gật gù buồn ngủ (nhạy hơn)
     _TURNING_COUNT = 5        # ≥5 lần quay đầu trong 60s → mất tập trung
     _REPEAT_WINDOW_S = 60.0
 
@@ -189,17 +186,33 @@ class CompositeInferrer:
             current.add(CompositeEventType.PASSIVE_WATCHING.value)
 
     def _eval_drowsy(self, s: dict, ts: float, current: set) -> None:
-        # eyes_closed ≥ 2s OR yawn ≥ 2 in 60s OR (head_down ∧ eyes_closed)
+        # Tín hiệu ngủ — nhiều dấu hiệu, miễn trúng một là kích hoạt:
+        # 1) Nhắm mắt ≥1.2s (state machine đã upgrade thành "closed")
         eyes_closed_long = (
             s.get("eye_state") == "closed"
             and s.get("eye_state_duration_ms", 0) >= settings.EYES_CLOSED_DROWSY_MS
         )
+        # 2) Mắt lim dim / sụp mí kéo dài (EAR < ngưỡng drowsy ≥4s) —
+        #    bắt cả trường hợp mắt chưa nhắm hẳn nhưng đã díp xuống.
+        drowsy_eyes_long = (
+            s.get("low_ear_duration_ms", 0) >= settings.DROWSY_EYES_LOW_MS
+        )
+        # 3) Ngáp ≥2 lần trong 60s
         yawn_times = s.get("yawn_times", [])
         recent_yawns = sum(1 for t in yawn_times if ts - t <= settings.YAWN_COUNT_WINDOW_S)
         many_yawns = recent_yawns >= settings.YAWN_COUNT_DROWSY
+        # 4) Đầu cúi + mắt nhắm tức thì
         head_down_closed = s.get("head_state") == "down" and s.get("eye_state") == "closed"
+        # 5) Đầu cúi ≥6s + mắt sụp mí + không viết bài → ngủ gục
+        head_down_dozy = (
+            s.get("head_state") == "down"
+            and s.get("head_state_duration_ms", 0) >= settings.HEAD_DOWN_DOZY_MS
+            and s.get("low_ear_duration_ms", 0) >= 1500
+            and not s.get("hand_writing")
+        )
 
-        if eyes_closed_long or many_yawns or head_down_closed:
+        if (eyes_closed_long or drowsy_eyes_long or many_yawns
+                or head_down_closed or head_down_dozy):
             current.add(CompositeEventType.DROWSY.value)
 
     def _eval_looking_away(self, s: dict, current: set) -> None:

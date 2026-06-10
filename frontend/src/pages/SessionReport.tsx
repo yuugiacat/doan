@@ -51,9 +51,9 @@ export default function SessionReport() {
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard label="Điểm TB" value={`${a.overall_score}`} color="blue" />
-          <StatCard label="Điểm cao nhất" value={`${a.peak_score}`} color="green" />
           <StatCard label="📖 Đang học" value={`${a.focused_pct}%`} color="green" />
+          <StatCard label="😵 Mất tập trung" value={`${a.distracted_pct}%`} color="orange" />
+          <StatCard label="📱 Dùng điện thoại" value={`${a.on_phone_pct}%`} color="red" />
           <StatCard label="😴 Mệt mỏi" value={`${a.sleepy_pct}%`} color="purple" />
         </div>
 
@@ -110,6 +110,7 @@ function StatCard({ label, value, color }: { label: string; value: string; color
   const colorMap: Record<string, string> = {
     blue: 'text-blue-400',
     green: 'text-green-400',
+    orange: 'text-orange-400',
     red: 'text-red-400',
     purple: 'text-purple-400',
   }

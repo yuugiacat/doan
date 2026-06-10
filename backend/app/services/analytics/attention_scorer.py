@@ -1,8 +1,9 @@
 """
-Attention Scorer — health-bar model.
+Attention Scorer — monotonic deduction model.
 
-Starts at 100. Deducts while distracted/sleepy, recovers while focused or neutral.
-Never drops below 0, never exceeds 100.
+Bắt đầu ở 100. Mỗi khi mất tập trung hoặc buồn ngủ → trừ điểm.
+Đã trừ rồi thì KHÔNG hồi lại — điểm cuối phiên phản ánh đúng tổng "chi phí"
+sao nhãng trong toàn bộ phiên học.
 """
 from __future__ import annotations
 
@@ -13,7 +14,6 @@ from app.services.analytics.vocabulary import (
     AttentionScore,
     AttentionState,
     CompositeEventType,
-    COMPOSITE_ENGAGEMENT,
     COMPOSITE_DISTRACTION,
     COMPOSITE_SLEEPY,
 )
@@ -31,23 +31,19 @@ class AttentionScorer:
         dt = min((ts - self._last_ts) if self._last_ts is not None else 1.0, 5.0)
         self._last_ts = ts
 
-        engagement_names = {e.value for e in COMPOSITE_ENGAGEMENT}
         distraction_names = {e.value for e in COMPOSITE_DISTRACTION}
         sleepy_names = {e.value for e in COMPOSITE_SLEEPY}
         composites = set(active_composites)
 
+        # Chỉ trừ, không bao giờ cộng — điểm đi xuống là không quay lại.
         if composites & distraction_names:
             self._score = max(0.0, self._score - settings.SCORE_DISTRACTION_RATE_PER_S * dt)
         elif composites & sleepy_names:
             self._score = max(0.0, self._score - settings.SCORE_SLEEPY_RATE_PER_S * dt)
-        elif composites & engagement_names:
-            self._score = min(100.0, self._score + settings.SCORE_ENGAGED_RATE_PER_S * dt)
-        else:
-            # Neutral — ngồi yên không sao nhãng → cộng điểm chậm
-            self._score = min(100.0, self._score + settings.SCORE_NEUTRAL_RATE_PER_S * dt)
+        # Focused / neutral: điểm giữ nguyên (không cộng).
 
         score = round(self._score, 1)
-        state = self._classify(score, active_composites)
+        state = self._classify(active_composites)
         result = AttentionScore(
             session_id=self.session_id,
             timestamp=ts,
@@ -59,21 +55,18 @@ class AttentionScorer:
         return result
 
     @staticmethod
-    def _classify(score: float, active_composites: list[str]) -> AttentionState:
+    def _classify(active_composites: list[str]) -> AttentionState:
+        # State chỉ phụ thuộc hành vi hiện tại (composites đang hoạt động),
+        # KHÔNG dựa vào điểm số — điểm là chi phí lũy kế, không phản ánh hiện tại.
         sleepy_names = {e.value for e in COMPOSITE_SLEEPY}
         distraction_names = {e.value for e in COMPOSITE_DISTRACTION}
         if any(c in sleepy_names for c in active_composites):
             return AttentionState.SLEEPY
-        # Dùng điện thoại → trạng thái riêng ON_PHONE (ưu tiên hơn mất tập trung chung).
         if CompositeEventType.PHONE_DISTRACTION.value in active_composites:
             return AttentionState.ON_PHONE
-        # Tác nhân mất tập trung khác (nhìn chỗ khác, quay đầu, rời bàn, nói chuyện)
-        # → tính DISTRACTED ngay, không chờ điểm tụt xuống 60.
         if any(c in distraction_names for c in active_composites):
             return AttentionState.DISTRACTED
-        if score >= 60:
-            return AttentionState.FOCUSED
-        return AttentionState.DISTRACTED
+        return AttentionState.FOCUSED
 
     def get_history(self) -> list[dict[str, Any]]:
         return [s.to_dict() for s in self._history]

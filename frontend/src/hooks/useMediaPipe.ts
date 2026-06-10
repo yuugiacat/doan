@@ -63,14 +63,30 @@ function gazeDirection(landmarks: any[], pose: ReturnType<typeof headPose>) {
   return 'up'
 }
 
-type PhoneBox = { x: number; y: number; w: number; h: number; score: number }
+type DetectedBox = {
+  x: number; y: number; w: number; h: number
+  score: number
+  kind: 'phone' | 'book'
+}
 
-// Vẽ bounding box + nhãn điện thoại. Tọa độ x được lật ngang để khớp với
-// video đang mirror (scaleX(-1)); canvas KHÔNG mirror nên chữ vẫn đọc xuôi.
-function drawPhoneOverlay(
+function iou(a: DetectedBox, b: DetectedBox): number {
+  const x1 = Math.max(a.x, b.x)
+  const y1 = Math.max(a.y, b.y)
+  const x2 = Math.min(a.x + a.w, b.x + b.w)
+  const y2 = Math.min(a.y + a.h, b.y + b.h)
+  const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1)
+  if (inter <= 0) return 0
+  const union = a.w * a.h + b.w * b.h - inter
+  return union > 0 ? inter / union : 0
+}
+
+// Vẽ bounding box + nhãn cho điện thoại (cam) và sách (xanh lá).
+// Tọa độ x được lật ngang để khớp với video đang mirror (scaleX(-1));
+// canvas KHÔNG mirror nên chữ vẫn đọc xuôi.
+function drawDetectionOverlay(
   canvas: HTMLCanvasElement | null | undefined,
   video: HTMLVideoElement,
-  boxes: { x: number; y: number; w: number; h: number; score: number }[]
+  boxes: DetectedBox[]
 ) {
   if (!canvas) return
   const vw = video.videoWidth, vh = video.videoHeight
@@ -84,16 +100,21 @@ function drawPhoneOverlay(
 
   for (const b of boxes) {
     const drawX = vw - (b.x + b.w)   // lật ngang cho khớp video mirror
+    const isPhone = b.kind === 'phone'
+    const color = isPhone ? '#f97316' : '#22c55e'   // orange-500 / green-500
+    const label = isPhone
+      ? `📱 Điện thoại ${Math.round(b.score * 100)}%`
+      : `📖 Sách ${Math.round(b.score * 100)}%`
+
     ctx.lineWidth = Math.max(2, vw / 250)
-    ctx.strokeStyle = '#f97316'      // orange-500
+    ctx.strokeStyle = color
     ctx.strokeRect(drawX, b.y, b.w, b.h)
 
-    const label = `📱 Điện thoại ${Math.round(b.score * 100)}%`
     ctx.font = `${Math.max(14, vw / 40)}px sans-serif`
-    const padX = 6, textW = ctx.measureText(label).width
     const fontH = Math.max(14, vw / 40)
+    const padX = 6, textW = ctx.measureText(label).width
     const labelY = b.y > fontH + 8 ? b.y - fontH - 6 : b.y + 2
-    ctx.fillStyle = '#f97316'
+    ctx.fillStyle = color
     ctx.fillRect(drawX, labelY, textW + padX * 2, fontH + 6)
     ctx.fillStyle = '#ffffff'
     ctx.textBaseline = 'top'
@@ -113,8 +134,8 @@ export function useMediaPipe(
   const frameCount = useRef<number>(0)
   // Cache kết quả phone detection giữa các frame (chỉ re-detect mỗi vài frame)
   const phoneCache = useRef<boolean>(false)
-  // Bounding box điện thoại gần nhất để vẽ nhãn lên overlay
-  const phoneBoxes = useRef<PhoneBox[]>([])
+  // Tất cả box (sách + phone đã được lọc) để vẽ overlay
+  const detectionBoxes = useRef<DetectedBox[]>([])
   const lastPhoneState = useRef<boolean>(false)
 
   const [ready, setReady]       = useState(false)
@@ -136,15 +157,16 @@ export function useMediaPipe(
           numFaces: 2,
         })
 
-        // ObjectDetector — chỉ giữ "cell phone", ngưỡng 0.3
-        // Thử GPU trước, nếu lỗi (driver/WebGL) thì fallback CPU để vẫn nhận diện được.
+        // ObjectDetector — phân loại "cell phone" và "book" để tránh nhầm
+        // sách thành điện thoại (cả hai đều là hình chữ nhật).
+        // Thử GPU trước, nếu lỗi (driver/WebGL) thì fallback CPU.
         const makeOD = (delegate: 'GPU' | 'CPU') =>
           ObjectDetector.createFromOptions(vision, {
             baseOptions: { modelAssetPath: OD_MODEL_URL, delegate },
             runningMode: 'VIDEO',
-            scoreThreshold: 0.3,          // hạ ngưỡng để bắt điện thoại nhạy hơn
-            maxResults: 5,
-            categoryAllowlist: ['cell phone'],
+            scoreThreshold: 0.3,
+            maxResults: 8,
+            categoryAllowlist: ['cell phone', 'book'],
           })
 
         let od: ObjectDetector | null = null
@@ -203,26 +225,37 @@ export function useMediaPipe(
       bbox = { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y }
     }
 
-    // ── Phone detection (mỗi 5 frame ~6fps — nhạy hơn trước) ─────
+    // ── Object detection: phân biệt điện thoại vs sách ───────────
     const od = objectDetectorRef.current
     if (od && frameCount.current % 5 === 0) {
       try {
         const odResult = od.detectForVideo(video, ts)
-        const phones = (odResult?.detections ?? []).filter((d: any) =>
-          d.categories?.some((c: any) => c.categoryName === 'cell phone')
-        )
+        const all: DetectedBox[] = (odResult?.detections ?? [])
+          .map((d: any): DetectedBox | null => {
+            const top = d.categories?.[0]
+            const cat = top?.categoryName
+            if (cat !== 'cell phone' && cat !== 'book') return null
+            const b = d.boundingBox ?? {}
+            return {
+              x: b.originX ?? 0,
+              y: b.originY ?? 0,
+              w: b.width ?? 0,
+              h: b.height ?? 0,
+              score: top?.score ?? 0,
+              kind: cat === 'book' ? 'book' : 'phone',
+            }
+          })
+          .filter((b: DetectedBox | null): b is DetectedBox =>
+            b !== null && b.w > 0 && b.h > 0)
+
+        const books = all.filter(b => b.kind === 'book')
+        // Phone bị "đè" bởi sách có box trùng (IoU>0.3) score cao hơn → coi là sách
+        const phones = all
+          .filter(b => b.kind === 'phone')
+          .filter(p => !books.some(bk => iou(p, bk) > 0.3 && bk.score >= p.score))
+
         phoneCache.current = phones.length > 0
-        phoneBoxes.current = phones.map((d: any) => {
-          const b = d.boundingBox ?? {}
-          const top = d.categories?.find((c: any) => c.categoryName === 'cell phone')
-          return {
-            x: b.originX ?? 0,
-            y: b.originY ?? 0,
-            w: b.width ?? 0,
-            h: b.height ?? 0,
-            score: top?.score ?? 0,
-          }
-        })
+        detectionBoxes.current = [...books, ...phones]
       } catch {
         // ignore per-frame errors
       }
@@ -234,8 +267,8 @@ export function useMediaPipe(
       setPhoneDetected(phoneCache.current)
     }
 
-    // ── Vẽ khung + nhãn "📱 Điện thoại" lên overlay ──────────────
-    drawPhoneOverlay(overlayCanvasRef?.current, video, phoneBoxes.current)
+    // ── Vẽ khung + nhãn lên overlay (điện thoại cam, sách xanh) ──
+    drawDetectionOverlay(overlayCanvasRef?.current, video, detectionBoxes.current)
 
     const frame: FeatureFrame = {
       type: 'frame',

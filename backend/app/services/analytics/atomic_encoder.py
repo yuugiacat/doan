@@ -101,6 +101,7 @@ class AtomicEncoder:
             "gaze_off_start": None,
             "eye_state": "open",       # open | blinking | closed
             "eye_state_start": None,
+            "low_ear_start": None,     # mốc bắt đầu mắt sụp mí (lim dim hoặc nhắm)
             "head_state": "facing",    # facing | turned_left | turned_right | down | up
             "head_state_start": None,
             "lean_state": "neutral",   # neutral | forward | back
@@ -187,6 +188,14 @@ class AtomicEncoder:
         on_screen = _gaze_on_screen(frame)
         direction = _gaze_direction(frame)
 
+        # Theo dõi mắt sụp mí (lim dim hoặc nhắm): EAR < ngưỡng drowsy.
+        # Bao trùm cả "nhắm hờ" mà state machine open/blinking/closed bỏ sót.
+        if avg_ear < settings.EAR_DROWSY_THRESHOLD:
+            if self._state["low_ear_start"] is None:
+                self._state["low_ear_start"] = ts
+        else:
+            self._state["low_ear_start"] = None
+
         # Eye state machine (open → blinking → closed)
         eye_state = self._state["eye_state"]
         eye_start = self._state["eye_state_start"]
@@ -247,10 +256,12 @@ class AtomicEncoder:
 
         if abs(yaw) <= cfg.HEAD_FACING_YAW_MAX and abs(pitch) <= cfg.HEAD_FACING_PITCH_MAX:
             new_state = "facing"
-        elif abs(yaw) > cfg.HEAD_YAW_THRESHOLD:
-            new_state = "turned_left" if yaw < 0 else "turned_right"
+        # Ưu tiên "down" hơn "turned": khi vừa cúi vừa nghiêng (đọc sách/viết
+        # vở để cạnh bàn) thì coi là cúi đầu — đó là tư thế học, không phải sao nhãng.
         elif pitch < cfg.HEAD_PITCH_DOWN_THRESHOLD:
             new_state = "down"
+        elif abs(yaw) > cfg.HEAD_YAW_THRESHOLD:
+            new_state = "turned_left" if yaw < 0 else "turned_right"
         elif pitch > cfg.HEAD_PITCH_UP_THRESHOLD:
             new_state = "up"
         else:
@@ -486,6 +497,10 @@ class AtomicEncoder:
             "eye_state_duration_ms": (
                 int((time.time() - self._state["eye_state_start"]) * 1000)
                 if self._state["eye_state_start"] else 0
+            ),
+            "low_ear_duration_ms": (
+                int((time.time() - self._state["low_ear_start"]) * 1000)
+                if self._state["low_ear_start"] else 0
             ),
             "head_state": self._state["head_state"],
             "head_state_duration_ms": (

@@ -28,7 +28,7 @@ _MESSAGES = {
 _THRESHOLDS = {
     AttentionState.DISTRACTED: 30,   # cảnh báo sau 30s mất tập trung
     AttentionState.ON_PHONE: 10,     # cảnh báo sớm sau 10s dùng điện thoại
-    AttentionState.SLEEPY: 15,       # cảnh báo sau 15s biểu hiện mệt
+    AttentionState.SLEEPY: 8,        # cảnh báo SỚM sau 8s biểu hiện ngủ
 }
 
 
